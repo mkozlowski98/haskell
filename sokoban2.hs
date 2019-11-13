@@ -70,5 +70,36 @@ drawState c = (atCoord c player1) & pictureOfMaze
 walk1 :: IO ()
 walk1 = activityOf initialCoord handleEvent drawState
 
+data DirectedCoord = DC Integer Integer Direction
+
+initialDirectedCoord :: DirectedCoord
+initialDirectedCoord = DC 3 3 D
+
+adjacentDirectedCoord :: Direction -> DirectedCoord -> DirectedCoord
+adjacentDirectedCoord R (DC x y d) = DC (x+1) y R
+adjacentDirectedCoord L (DC x y d) = DC (x-1) y L
+adjacentDirectedCoord U (DC x y d) = DC x (y+1) U
+adjacentDirectedCoord D (DC x y d) = DC x (y-1) D
+
+handleDirectedEvent :: Event -> DirectedCoord -> DirectedCoord
+handleDirectedEvent (KeyPress key) (DC x y d)
+  | key == "Right" && checkCoord (C (x+1) y) = adjacentDirectedCoord R (DC x y d)
+  | key == "Left"  && checkCoord (C (x-1) y) = adjacentDirectedCoord L (DC x y d)
+  | key == "Up"    && checkCoord (C x (y+1)) = adjacentDirectedCoord U (DC x y d)
+  | key == "Down"  && checkCoord (C x (y-1)) = adjacentDirectedCoord D (DC x y d)
+handleDirectedEvent _ dc    = dc
+
+player2 :: Direction -> Picture
+player2 R = rotated (pi/2) player1
+player2 L = rotated (3*pi/2) player1
+player2 U = rotated pi player1
+player2 D = player1
+
+drawDirectedState :: DirectedCoord -> Picture
+drawDirectedState (DC x y d) = (atCoord (C x y) (player2 d)) & pictureOfMaze
+
+walk2 :: IO ()
+walk2 = activityOf initialDirectedCoord handleDirectedEvent drawDirectedState
+
 main :: IO ()
-main = walk1
+main = walk2
