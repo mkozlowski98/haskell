@@ -42,6 +42,11 @@ data Coord = C Integer Integer
 initialCoord :: Coord
 initialCoord = C 3 3
 
+checkCoord :: Coord -> Bool
+checkCoord (C x y)
+  | maze x y == Storage || maze x y == Ground = True
+  | otherwise                                 = False
+
 atCoord :: Coord -> Picture -> Picture
 atCoord (C x y) pic = translated (fromIntegral x) (fromIntegral y) pic
 
@@ -52,11 +57,11 @@ adjacentCoord U (C x y) = C x (y+1)
 adjacentCoord D (C x y) = C x (y-1)
 
 handleEvent :: Event -> Coord -> Coord
-handleEvent (KeyPress key) c
-  | key == "Right" = adjacentCoord R c
-  | key == "Left"  = adjacentCoord L c
-  | key == "Up"    = adjacentCoord U c
-  | key == "Down"  = adjacentCoord D c
+handleEvent (KeyPress key) (C x y)
+  | key == "Right" && checkCoord (C (x+1) y) = adjacentCoord R (C x y)
+  | key == "Left"  && checkCoord (C (x-1) y) = adjacentCoord L (C x y)
+  | key == "Up"    && checkCoord (C x (y+1)) = adjacentCoord U (C x y)
+  | key == "Down"  && checkCoord (C x (y-1)) = adjacentCoord D (C x y)
 handleEvent _ c    = c
 
 drawState :: Coord -> Picture
