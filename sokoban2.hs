@@ -101,5 +101,15 @@ drawDirectedState (DC x y d) = (atCoord (C x y) (player2 d)) & pictureOfMaze
 walk2 :: IO ()
 walk2 = activityOf initialDirectedCoord handleDirectedEvent drawDirectedState
 
+{- Funkcja resettableActivityOf po naciśnięciu klawisza Escape zwraca stan początkowy (powraca do stanu początkowego),
+   przy puszczeniu klawisza Escape stan gry pozostaje niezmieniony (przekazujemy to zdarzenie do handlera podanego w argumentach funkcji). -}
+resettableActivityOf :: world -> (Event -> world -> world) -> (world -> Picture) -> IO ()
+resettableActivityOf initialWorld eventHandler draw = activityOf initialWorld resettableHandler draw
+  where resettableHandler (KeyPress "Esc") c = initialWorld
+        resettableHandler key c              = eventHandler key c
+        
+walk3 :: IO ()
+walk3 = resettableActivityOf initialDirectedCoord handleDirectedEvent drawDirectedState 
+
 main :: IO ()
-main = walk2
+main = walk3
