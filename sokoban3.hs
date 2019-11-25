@@ -95,7 +95,9 @@ adjacentBoxes :: [Coord] -> Coord -> Direction -> [Coord]
 adjacentBoxes boxes coord direction = map (\x -> if (x == coord) then (adjacentCoord direction coord) else x) boxes
 
 draw :: State -> Picture
-draw (S coord direction boxes) = (atCoord coord (player2 direction)) & (pictureOfMaze (addBoxes boxes (removeBoxes maze)))
+draw (S coord direction boxes)
+  | isWinning (S coord direction boxes) == True = scaled 3 3 (lettering "You won!")
+  | otherwise = (atCoord coord (player2 direction)) & (pictureOfMaze (addBoxes boxes (removeBoxes maze)))
 
 adjacentState :: State -> State
 adjacentState (S coord direction boxes)
@@ -104,11 +106,18 @@ adjacentState (S coord direction boxes)
 
 handleEvent :: Event -> State -> State
 handleEvent (KeyPress key) (S coord direction boxes)
+  | isWinning (S coord direction boxes) == True = (S coord direction boxes)
   | key == "Right" && checkCoord coord R boxes = adjacentState (S coord R boxes)
   | key == "Left" && checkCoord coord L boxes  = adjacentState (S coord L boxes)
   | key == "Up" && checkCoord coord U boxes    = adjacentState (S coord U boxes)
   | key == "Down" && checkCoord coord D boxes  = adjacentState (S coord D boxes)
 handleEvent _ state                      = state
+
+allList :: [Bool] -> Bool
+allList stmt = all (==True) stmt
+
+isWinning :: State -> Bool
+isWinning (S coord direction boxes) = allList (map (\x -> if (maze x == Storage) then True else False) boxes)
 
 data Activity world = Activity world (Event -> world -> world) (world -> Picture)
 
