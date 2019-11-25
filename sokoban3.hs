@@ -37,9 +37,9 @@ initialCoord = C 3 3
 atCoord :: Coord -> Picture -> Picture
 atCoord (C x y) pic = translated (fromIntegral x) (fromIntegral y) pic
 
-checkIfAllowed :: Coord -> Bool
-checkIfAllowed coord
-  | maze coord == Storage || maze coord == Ground = True
+checkIfAllowed :: Coord -> [Coord] -> Bool
+checkIfAllowed coord boxes
+  | (addBoxes boxes (removeBoxes maze)) coord == Storage || (addBoxes boxes (removeBoxes maze)) coord == Ground = True
   | otherwise                                     = False
 
 adjacentCoord :: Direction -> Coord -> Coord
@@ -48,10 +48,10 @@ adjacentCoord L (C x y) = C (x-1) y
 adjacentCoord U (C x y) = C x (y+1)
 adjacentCoord D (C x y) = C x (y-1)
 
-checkCoord :: Coord -> Direction -> Bool
-checkCoord coord direction
-  | checkIfAllowed (adjacentCoord direction coord) == True                                                = True
-  | maze (adjacentCoord direction coord) == Box && checkIfAllowed (adjacentCoord direction coord) == True = True
+checkCoord :: Coord -> Direction -> [Coord] -> Bool
+checkCoord coord direction boxes
+  | checkIfAllowed (adjacentCoord direction coord) boxes == True                                                = True
+  | (addBoxes boxes (removeBoxes maze)) (adjacentCoord direction coord) == Box && checkIfAllowed (adjacentCoord direction (adjacentCoord direction coord)) boxes == True = True
   | otherwise                                                                                             = False
 
 type Maze = Coord -> Tile
@@ -64,9 +64,6 @@ maze (C x y)
   | x ==  3 && y <= 0        = Storage
   | x >= -2 && y == 0        = Box
   | otherwise                = Ground
-
-boxes :: [Coord]
-boxes = [(C x y) | x <- [0,1], y <- [0, 1]]
 
 pictureOfMaze :: Maze -> Picture
 pictureOfMaze func = pictures([translated (fromIntegral x) (fromIntegral y) (drawTile (func (C x y))) | x<-[-10..10], y<-[-10..10]])
@@ -94,19 +91,32 @@ addBoxes boxes func = func'
   where func' coord | (elem coord boxes) == True = Box
         func' coord = func coord
 
+adjacentBoxes :: [Coord] -> Coord -> Direction -> [Coord]
+adjacentBoxes boxes coord direction = map (\x -> if (x == coord) then (adjacentCoord direction coord) else x) boxes
+
 draw :: State -> Picture
-draw (S coord direction boxes) = (atCoord coord (player2 direction)) & (pictureOfMaze maze)
+draw (S coord direction boxes) = (atCoord coord (player2 direction)) & (pictureOfMaze (addBoxes boxes (removeBoxes maze)))
 
 adjacentState :: State -> State
 adjacentState (S coord direction boxes)
-  | maze adjacentCoord direction coord == Box = (S (adjacentCoord direction coord) direction )
+  | (addBoxes boxes (removeBoxes maze)) (adjacentCoord direction coord) == Box = (S (adjacentCoord direction coord) direction (adjacentBoxes boxes (adjacentCoord direction coord) direction))
+  | otherwise                                 = (S (adjacentCoord direction coord) direction boxes)
 
 handleEvent :: Event -> State -> State
 handleEvent (KeyPress key) (S coord direction boxes)
-  | key == "Right" && checkCoord coord R = 
-  | key == "Left" && checkCoord coord L  =
-  | key == "Up" && checkCoord coord U    =
-  | key == "Down" && checkCoord coord D  = 
+  | key == "Right" && checkCoord coord R boxes = adjacentState (S coord R boxes)
+  | key == "Left" && checkCoord coord L boxes  = adjacentState (S coord L boxes)
+  | key == "Up" && checkCoord coord U boxes    = adjacentState (S coord U boxes)
+  | key == "Down" && checkCoord coord D boxes  = adjacentState (S coord D boxes)
+handleEvent _ state                      = state
+
+data Activity world = Activity world (Event -> world -> world) (world -> Picture)
+    
+simple :: Activity State
+simple = Activity initialState handleEvent draw
+
+runActivity :: Activity s -> IO ()
+runActivity (Activity state0 handle draw0) = activityOf state0 handle draw0
 
 main :: IO ()
-main = drawingOf (draw initialState)
+main = (runActivity simple)
