@@ -111,6 +111,29 @@ handleEvent (KeyPress key) (S coord direction boxes)
 handleEvent _ state                      = state
 
 data Activity world = Activity world (Event -> world -> world) (world -> Picture)
+
+resettable :: Activity s -> Activity s
+resettable (Activity state0 handle draw) = Activity state0 handle' draw
+    where handle' (KeyPress key) _ | key == "Esc" = state0
+          handle' e s = handle e s
+
+startScreen :: Picture
+startScreen = scaled 3 3 (lettering "Sokoban!")
+
+data SSState world = StartScreen | Running world
+
+withStartScreen :: Activity s -> Activity (SSState s)
+withStartScreen (Activity state0 handle draw) = Activity state0' handle' draw'
+  where
+    state0' = StartScreen
+
+    handle' (KeyPress key) StartScreen
+         | key == " "                  = Running state0
+    handle' _              StartScreen = StartScreen
+    handle' e              (Running s) = Running (handle e s)
+
+    draw' StartScreen = startScreen
+    draw' (Running s) = draw s
     
 simple :: Activity State
 simple = Activity initialState handleEvent draw
@@ -119,4 +142,4 @@ runActivity :: Activity s -> IO ()
 runActivity (Activity state0 handle draw0) = activityOf state0 handle draw0
 
 main :: IO ()
-main = (runActivity simple)
+main = (runActivity (withStartScreen (resettable simple)))
