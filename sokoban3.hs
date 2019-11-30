@@ -101,7 +101,7 @@ adjacentBoxes boxes coord direction = map (\x -> if (x == coord) then (adjacentC
 
 draw :: State -> Picture
 draw (S coord direction boxes) =
-  if isWinning (S coord direction boxes) == True then scaled 3 3 (lettering "You won!") & translated 0 (-2) (lettering "Press escape for new game")
+  if isWinning (S coord direction boxes) == True then scaled 3 3 (lettering "You won!") & translated 0 (-2) (lettering "Press escape to start a new game")
   else (atCoord coord (player2 direction)) & (pictureOfMaze (addBoxes boxes (removeBoxes maze)))
 
 keyToDirection :: Event -> Maybe Direction
