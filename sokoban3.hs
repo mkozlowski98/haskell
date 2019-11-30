@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 import CodeWorld
+import Data.Maybe
 
 square, wall, ground, storage, box :: Picture
 square = solidRectangle 1 1
@@ -37,10 +38,15 @@ initialCoord = C 3 3
 atCoord :: Coord -> Picture -> Picture
 atCoord (C x y) pic = translated (fromIntegral x) (fromIntegral y) pic
 
-checkIfAllowed :: Coord -> [Coord] -> Bool
-checkIfAllowed coord boxes
-  | (addBoxes boxes (removeBoxes maze)) coord == Storage || (addBoxes boxes (removeBoxes maze)) coord == Ground = True
-  | otherwise                                     = False
+checkIfFree :: Coord -> Maze -> Bool
+checkIfFree coord myMaze
+  | myMaze coord == Storage || myMaze coord == Ground = True
+  | otherwise                                         = False
+
+checkIfBoxAllowed :: Direction -> Coord -> Maze -> Bool
+checkIfBoxAllowed direction coord myMaze
+  | myMaze coord == Box && checkIfFree (adjacentCoord direction coord) myMaze = True
+  | otherwise                                                                 = False
 
 adjacentCoord :: Direction -> Coord -> Coord
 adjacentCoord R (C x y) = C (x+1) y
@@ -48,11 +54,10 @@ adjacentCoord L (C x y) = C (x-1) y
 adjacentCoord U (C x y) = C x (y+1)
 adjacentCoord D (C x y) = C x (y-1)
 
-checkCoord :: Coord -> Direction -> [Coord] -> Bool
-checkCoord coord direction boxes
-  | checkIfAllowed (adjacentCoord direction coord) boxes == True                                                = True
-  | (addBoxes boxes (removeBoxes maze)) (adjacentCoord direction coord) == Box && checkIfAllowed (adjacentCoord direction (adjacentCoord direction coord)) boxes == True = True
-  | otherwise                                                                                             = False
+adjacentCoordIfAllowed :: Coord -> Direction -> Maze -> Coord
+adjacentCoordIfAllowed coord direction myMaze =
+  if checkIfFree (adjacentCoord direction coord) myMaze || checkIfBoxAllowed direction (adjacentCoord direction coord) myMaze then adjacentCoord direction coord
+  else coord
 
 type Maze = Coord -> Tile
 
@@ -95,23 +100,28 @@ adjacentBoxes :: [Coord] -> Coord -> Direction -> [Coord]
 adjacentBoxes boxes coord direction = map (\x -> if (x == coord) then (adjacentCoord direction coord) else x) boxes
 
 draw :: State -> Picture
-draw (S coord direction boxes)
-  | isWinning (S coord direction boxes) == True = scaled 3 3 (lettering "You won!")
-  | otherwise = (atCoord coord (player2 direction)) & (pictureOfMaze (addBoxes boxes (removeBoxes maze)))
+draw (S coord direction boxes) =
+  if isWinning (S coord direction boxes) == True then scaled 3 3 (lettering "You won!") & translated 0 (-2) (lettering "Press escape for new game")
+  else (atCoord coord (player2 direction)) & (pictureOfMaze (addBoxes boxes (removeBoxes maze)))
 
-adjacentState :: State -> State
-adjacentState (S coord direction boxes)
-  | (addBoxes boxes (removeBoxes maze)) (adjacentCoord direction coord) == Box = (S (adjacentCoord direction coord) direction (adjacentBoxes boxes (adjacentCoord direction coord) direction))
-  | otherwise                                 = (S (adjacentCoord direction coord) direction boxes)
+keyToDirection :: Event -> Maybe Direction
+keyToDirection (KeyPress key)
+  | key == "Right" = Just R
+  | key == "Left"  = Just L
+  | key == "Up"    = Just U
+  | key == "Down"  = Just D
+keyToDirection _ = Nothing
 
 handleEvent :: Event -> State -> State
-handleEvent (KeyPress key) (S coord direction boxes)
-  | isWinning (S coord direction boxes) == True = (S coord direction boxes)
-  | key == "Right" && checkCoord coord R boxes = adjacentState (S coord R boxes)
-  | key == "Left" && checkCoord coord L boxes  = adjacentState (S coord L boxes)
-  | key == "Up" && checkCoord coord U boxes    = adjacentState (S coord U boxes)
-  | key == "Down" && checkCoord coord D boxes  = adjacentState (S coord D boxes)
-handleEvent _ state                      = state
+handleEvent event state@(S coord direction boxes) =
+  if isNothing (keyToDirection event) then state
+  else
+    if isWinning state then state
+    else (S newCoord newDirection (adjacentBoxes boxes newCoord newDirection))
+    where
+      newCoord = adjacentCoordIfAllowed coord newDirection actMaze
+      newDirection = fromJust (keyToDirection event)
+      actMaze = addBoxes boxes (removeBoxes maze)
 
 allList :: [Bool] -> Bool
 allList stmt = all (==True) stmt
