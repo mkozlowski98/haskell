@@ -1,5 +1,46 @@
 import CodeWorld
 
+elemList :: Eq a => a -> [a] -> Bool
+elemList _ [] = False
+elemList y (x:xs) = if y == x then True
+                    else elemList y xs
+
+appendList :: [a] -> [a] -> [a]
+appendList xs [] = xs
+appendList [] ys = ys
+appendList (x:xs) (y:ys) = x : y : appendList xs ys
+
+listLength :: [a] -> Integer
+listLength [] = 0
+listLength (x:xs) = 1 + listLength xs
+
+filterList :: (a -> Bool) -> [a] -> [a]
+filterList f [] = []
+filterList f (x:xs) = if f x == True then x : filterList f xs
+                      else filterList f xs
+
+nth :: [a] -> Integer -> a
+nth (x:xs) n = if n == 1 then x
+               else nth xs (n-1)
+
+mapList :: (a -> b) -> [a] -> [b]
+mapList f [] = []
+mapList f (x:xs) = f x : mapList f xs
+
+andList :: [Bool] -> Bool
+andList [] = True
+andList (x:xs) = if x == False then False
+                 else andList xs
+
+allList :: (a -> Bool) -> [a] -> Bool
+allList f [] = True
+allList f (x:xs) = if f x == False then False
+                   else allList f xs
+
+foldList :: (a -> b -> b) -> b -> [a] -> b
+foldList f y [] = y
+foldList f y (x:xs) = f x (foldList f y xs) 
+
 square, wall, ground, storage, box :: Picture
 square = solidRectangle 1 1
 wall = colored black square
