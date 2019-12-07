@@ -39,7 +39,22 @@ allList f (x:xs) = if f x == False then False
 
 foldList :: (a -> b -> b) -> b -> [a] -> b
 foldList f y [] = y
-foldList f y (x:xs) = f x (foldList f y xs) 
+foldList f y (x:xs) = f x (foldList f y xs)
+
+bfsGraph :: Eq a => [a] -> [a] -> (a -> [a]) -> [a]
+bfsGraph seen [] _ = seen
+bfsGraph seen queue neighbours = if elemList first seen == True then bfsGraph seen (tail queue) neighbours
+                                 else bfsGraph (first : seen) (appendList (tail queue) (neighbours first)) neighbours
+                                 where first = nth queue 1
+
+isGraphClosed :: Eq a => a -> (a -> [a]) -> (a -> Bool) -> Bool
+isGraphClosed initial neighbours isOk = allList isOk (bfsGraph (initial : []) (neighbours initial) neighbours)
+
+reachable :: Eq a => a -> a -> (a -> [a]) -> Bool
+reachable v initial neighbours = elemList v (bfsGraph (initial : []) (neighbours initial) neighbours)
+
+allReachable :: Eq a => [a] -> a -> (a -> [a]) -> Bool
+allReachable vs initial neighbours = andList (mapList isReachable vs) where isReachable x = reachable x initial neighbours
 
 square, wall, ground, storage, box :: Picture
 square = solidRectangle 1 1
