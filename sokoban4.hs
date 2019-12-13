@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import CodeWorld
 import Data.Maybe
+import Data.Text
 
 elemList :: Eq a => a -> [a] -> Bool
 elemList _ [] = False
@@ -22,8 +23,8 @@ filterList f (x:xs) = if f x == True then x : filterList f xs
                       else filterList f xs
 
 nth :: [a] -> Integer -> a
-nth (x:xs) n = if n == 1 then x
-               else nth xs (n-1)
+nth (x:xs) 0 = x
+nth (x:xs) n = nth xs (n-1)
 
 mapList :: (a -> b) -> [a] -> [b]
 mapList f [] = []
@@ -99,17 +100,25 @@ adjacentCoordIfAllowed coord direction myMaze =
 
 data Maze = Maze Coord (Coord -> Tile)
 
-data Direction = R | U | L | D
+data Direction = R | U | L | D deriving (Eq)
 
 initialDirection :: Direction
 initialDirection = D
 
-data State = S Coord Direction [Coord]
+data State = S {
+  coord :: Coord,
+  direction :: Direction,
+  boxes :: [Coord],
+  noMaze :: Integer,
+  noMoves :: Integer
+}
+
 instance Eq State where
-  S coord direction boxes == S coord' direction' boxes' = coord == coord' && boxes == boxes'
+  S coord direction boxes noMaze noMoves == S coord' direction' boxes' noMaze' noMoves' = coord == coord' &&
+    direction == direction' && boxes == boxes' && noMaze == noMaze' && noMoves == noMoves'
 
 initialState :: Maze -> State
-initialState maze@(Maze coord drawMaze) = S coord initialDirection (initialBoxes maze)
+initialState maze@(Maze coord drawMaze) = S coord initialDirection (initialBoxes maze) 0 0
 
 initialBoxes :: Maze -> [Coord]
 initialBoxes (Maze coord func) = filterList (\x -> if (func x == Box) then True else False) (bfsGraph (coord : []) (neighbours coord) neighbours)
@@ -127,37 +136,38 @@ addBoxes boxes func = func'
         func' coord = func coord
 
 adjacentBoxes :: [Coord] -> Coord -> Direction -> [Coord]
-adjacentBoxes boxes coord direction = map (\x -> if (x == coord) then (adjacentCoord direction coord) else x) boxes
+adjacentBoxes boxes coord direction = Prelude.map (\x -> if (x == coord) then (adjacentCoord direction coord) else x) boxes
 
 draw :: State -> Picture
-draw (S coord direction boxes) =
-  if isWinning (S coord direction boxes) == True then (lettering "Poziom ukończony, liczba ruchów: ")
+draw state@(S coord direction boxes noMaze noMoves) =
+  if isWinning state && noMaze < numberLevels - 1 then lettering (append "Poziom ukończony, liczba ruchów: " (Data.Text.pack (show noMoves)))
+  else if isWinning state && noMaze >= numberLevels - 1 then endScreen
   else (atCoord coord (player2 direction)) & (pictureOfMaze (addBoxes boxes (removeBoxes maze)))
-
-keyToDirection :: Event -> Maybe Direction
-keyToDirection (KeyPress key)
-  | key == "Right" = Just R
-  | key == "Left"  = Just L
-  | key == "Up"    = Just U
-  | key == "Down"  = Just D
-keyToDirection _ = Nothing
+  where numberLevels = listLength mazes
+        Maze initialCoord maze = if noMaze < numberLevels then nth mazes noMaze else nth mazes 0
 
 handleEvent :: Event -> State -> State
-handleEvent event state@(S coord direction boxes) =
-  case keyToDirection event of
-    Nothing -> state
-    Just x -> if isWinning state then state
-              else (S newCoord newDirection (adjacentBoxes boxes newCoord newDirection))
-              where
-                 newCoord = adjacentCoordIfAllowed coord newDirection actMaze
-                 newDirection = x
-                 actMaze = addBoxes boxes (removeBoxes maze)
-
-checkIfStorage :: Coord -> Bool
-checkIfStorage coord = maze coord == Storage
+handleEvent (KeyPress key) state@(S coord direction boxes noMaze noMoves)
+  | isWinning state && noMaze == (listLength mazes) - 1 = state
+  | isWinning state = (S newC D (initialBoxes (Maze newC newMaze)) (noMaze+1) 0)
+  | key == "Right" || key == "Left" || key == "Up" || key == "Down" =
+      (S newCoord newDirection (adjacentBoxes boxes newCoord newDirection) noMaze (noMoves + 1))
+  where
+    newCoord = adjacentCoordIfAllowed coord newDirection actMaze
+    newDirection
+      | key == "Right" = R
+      | key == "Left"  = L
+      | key == "Up"    = U
+      | key == "Down"  = D
+    actMaze = addBoxes boxes (removeBoxes currMaze)
+    Maze initialCoord currMaze = nth mazes noMaze
+    Maze newC newMaze = nth mazes (noMaze + 1)
+handleEvent _ s = s
 
 isWinning :: State -> Bool
-isWinning (S coord direction boxes) = allList checkIfStorage boxes
+isWinning (S coord direction boxes noMaze noMoves) = allList checkIfStorage boxes
+  where checkIfStorage coord = currMaze coord == Storage
+        Maze coord currMaze = nth mazes noMaze
 
 data Activity world = Activity world (Event -> world -> world) (world -> Picture)
 
@@ -166,8 +176,8 @@ resettable (Activity state0 handle draw) = Activity state0 handle' draw
     where handle' (KeyPress key) _ | key == "Esc" = state0
           handle' e s = handle e s
 
-startScreen :: Picture
-startScreen = scaled 3 3 (lettering "Sokoban!") & (translated 0 (-5) etap4)
+endScreen :: Picture
+endScreen = scaled 3 3 (lettering "Wygrałeś!") & translated 0 (-2) (lettering "Naciśnij escape aby rozpocząć ponownie")
 
 data SSState world = StartScreen | Running world
 
@@ -181,7 +191,7 @@ withStartScreen (Activity state0 handle draw) = Activity state0' handle' draw'
     handle' _              StartScreen = StartScreen
     handle' e              (Running s) = Running (handle e s)
 
-    draw' StartScreen = startScreen
+    draw' StartScreen = etap4
     draw' (Running s) = draw s
 
 data WithUndo a = WithUndo a [a]
@@ -198,9 +208,6 @@ withUndo (Activity state0 handle draw) = Activity state0' handle' draw' where
       where s' = handle e s
     draw' (WithUndo s _) = draw s
 
-getNumberOfMoves :: WithUndo a -> Integer
-getNumberOfMoves (WithUndo x xs) = listLength xs
-
 simple :: Maze -> Activity State
 simple maze = Activity (initialState maze) handleEvent draw
 
@@ -208,24 +215,24 @@ runActivity :: Activity s -> IO ()
 runActivity (Activity state0 handle draw0) = activityOf state0 handle draw0
 
 etap5 :: IO ()
-etap5 = (runActivity (withStartScreen (resettable (withUndo (simple mazeGood1)))))
+etap5 = (runActivity . withStartScreen . resettable . withUndo) (simple (nth mazes 0))
 
 main :: IO ()
 main = etap5
 
 bfsGraph :: Eq a => [a] -> [a] -> (a -> [a]) -> [a]
 bfsGraph seen [] _ = seen
-bfsGraph seen queue neighbours = if elemList first seen == True then bfsGraph seen (tail queue) neighbours
-                                 else bfsGraph (first : seen) (appendList (tail queue) (neighbours first)) neighbours
-                                 where first = nth queue 1
+bfsGraph seen queue neighbours = if elemList first seen == True then bfsGraph seen (Prelude.tail queue) neighbours
+                                 else bfsGraph (first : seen) (appendList (Prelude.tail queue) (neighbours first)) neighbours
+                                 where first = nth queue 0
 
 bfsWithCheck :: Eq a => [a] -> [a] -> (a -> [a]) -> (a -> Bool) -> Bool
 bfsWithCheck seen [] _ _ = True
 bfsWithCheck seen queue neighbours isOk = if isOk first == False then False
                                           else
-                                            if elemList first seen == True then bfsWithCheck seen (tail queue) neighbours isOk
-                                            else bfsWithCheck (first : seen) (appendList (tail queue) (neighbours first)) neighbours isOk
-                                          where first = nth queue 1
+                                            if elemList first seen == True then bfsWithCheck seen (Prelude.tail queue) neighbours isOk
+                                            else bfsWithCheck (first : seen) (appendList (Prelude.tail queue) (neighbours first)) neighbours isOk
+                                          where first = nth queue 0
 
 isGraphClosed :: Eq a => a -> (a -> [a]) -> (a -> Bool) -> Bool
 isGraphClosed initial neighbours isOk = bfsWithCheck (initial : []) (neighbours initial) neighbours isOk
@@ -245,7 +252,7 @@ isClosed (Maze coord drawMaze) = if drawMaze coord == Storage || drawMaze coord 
   
 isSane :: Maze -> Bool
 isSane (Maze coord drawMaze) = listLength (filterList checkIfStorage reachableInMaze) >= listLength (filterList checkIfBox reachableInMaze)
-                               where reachableInMaze = bfsGraph (coord : []) (neighbours coord) neighbours
+                               where reachableInMaze = bfsGraph [coord] (neighbours coord) neighbours
                                      neighbours (C x y) = filterList checkIfWall [(C (x-1) y), (C (x+1) y), (C x (y-1)), (C x (y+1))]
                                      checkIfWall coord = drawMaze coord /= Wall
                                      checkIfStorage coord = drawMaze coord == Storage
@@ -256,7 +263,7 @@ checkMaze maze = isClosed maze && isSane maze
 
 pictureOfBools :: [Bool] -> Picture
 pictureOfBools xs = translated (-fromIntegral k / 2) (fromIntegral k) (go 0 xs)
-  where n = length xs
+  where n = Prelude.length xs
         k = findK 0 -- k is the integer square of n
         findK i | i * i >= n = i
                 | otherwise  = findK (i+1)
@@ -271,23 +278,26 @@ pictureOfBools xs = translated (-fromIntegral k / 2) (fromIntegral k) (go 0 xs)
         pictureOfBool False = colored red   (solidCircle 0.4)
 
 etap4 :: Picture
-etap4 = pictureOfBools (appendList (mapList checkMaze mazes) (mapList checkMaze badMazes))
-
-maze :: Coord -> Tile
-maze = drawMazeGood1
+etap4 = translated 0 6 (scaled 3 3 (lettering "Sokoban")) &
+        translated 0 4 (lettering "Zamknięte poziomy dobre") &
+        (pictureOfBools (mapList isClosed mazes)) &
+        translated 0 0 (lettering "Zamknięte poziomy złe") &
+        translated 0 (-4) (pictureOfBools (mapList isClosed badMazes)) &
+        translated 0 (-4) (lettering "Rozsądne poziomy dobre") &
+        translated 0 (-8) (pictureOfBools (mapList isSane mazes))
+        -- translated 0 (-8) (lettering "Rozsądne poziomy złe") &
+        -- translated 0 (-12) (pictureOfBools (mapList isSane badMazes))
 
 mazes :: [Maze]
-mazes = [mazeGood1, mazeGood2]
+mazes = [Maze (C 0 3) maze1, Maze (C 3 3) maze2]
 badMazes :: [Maze]
-badMazes = [mazeBad1, mazeBad2]
+badMazes = [Maze (C (-1) (-2)) maze3, Maze (C 0 0) maze4]
 
 pictureOfMaze :: (Coord -> Tile) -> Picture
 pictureOfMaze draw = pictures([translated (fromIntegral x) (fromIntegral y) (drawTile (draw (C x y))) | x<-[-10..10], y<-[-10..10]])
 
-mazeGood1 :: Maze
-mazeGood1 = Maze (C 0 3) drawMazeGood1
-drawMazeGood1 :: Coord -> Tile
-drawMazeGood1 (C x y)
+maze1 :: Coord -> Tile
+maze1 (C x y)
   | abs x > 3 || y < -3 || y > 4               = Blank
   | abs x == 3 && (y < -1 || y > 2)            = Blank
   | abs x == 2 && (y < -2 || y > 3)            = Blank
@@ -300,10 +310,8 @@ drawMazeGood1 (C x y)
   | x == 1 && ((y >= 1 && y <= 3) || y == -2)  = Storage
   | otherwise                                  = Ground
 
-mazeGood2 :: Maze
-mazeGood2 = Maze (C 3 3) drawMazeGood2
-drawMazeGood2 :: Coord -> Tile
-drawMazeGood2 (C x y)
+maze2 :: Coord -> Tile
+maze2 (C x y)
   | abs x > 4  || abs y > 4  = Blank
   | abs x == 4 || abs y == 4 = Wall
   | x ==  2 && y <= 0        = Wall
@@ -311,10 +319,8 @@ drawMazeGood2 (C x y)
   | x >= -2 && y == 0        = Box
   | otherwise                = Ground
 
-mazeBad1 :: Maze
-mazeBad1 = Maze (C (-1) (-2)) drawMazeBad1
-drawMazeBad1 :: Coord -> Tile
-drawMazeBad1 (C x y)
+maze3 :: Coord -> Tile
+maze3 (C x y)
   | abs x > 3 || abs y > 3                  = Blank
   | abs x == 3 || abs y == 3                = Wall
   | abs x == 1 && abs y == 1                = Wall
@@ -324,10 +330,8 @@ drawMazeBad1 (C x y)
   | x == 2 && (y == 2 || y == -1)           = Storage
   | otherwise                               = Ground
 
-mazeBad2 :: Maze
-mazeBad2 = Maze (C 0 0) drawMazeBad2
-drawMazeBad2 :: Coord -> Tile
-drawMazeBad2 (C x y)
+maze4 :: Coord -> Tile
+maze4 (C x y)
   | abs x > 4 || abs y > 4   = Blank
   | x == 4 && y == 0         = Blank
   | abs x == 4 || abs y == 4 = Wall
